@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Author Dashboard – Blogverse</title>
+  <meta name="description" content="Manage your published articles, drafts, and performance analytics." />
+  <link rel="icon" type="image/svg+xml" href="assets/images/logo.svg" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- Navigation Bar -->
+  <header class="navbar">
+    <div class="container">
+      <a href="index.html" class="brand-logo" aria-label="Blogverse Home">
+        <img src="assets/images/logo.svg" alt="Blogverse Logo" />
+        <span>Blog<span class="brand-accent">verse</span></span>
+      </a>
+
+      <nav class="nav-links">
+        <a href="index.html" class="nav-link">Home</a>
+        <a href="index.html#latest-posts" class="nav-link">Explore</a>
+        <a href="create-blog.html" class="nav-link">Write</a>
+        <a href="dashboard.html" class="nav-link active">Dashboard</a>
+      </nav>
+
+      <div class="nav-actions">
+        <button class="theme-toggle-btn" aria-label="Toggle Theme" title="Toggle theme">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        </button>
+        <div id="navbar-auth-actions"></div>
+        <button class="mobile-toggle-btn" aria-label="Open Menu">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Mobile Drawer -->
+  <div class="mobile-nav" id="mobile-nav">
+    <a href="index.html" class="nav-link">Home</a>
+    <a href="index.html#latest-posts" class="nav-link">Explore Articles</a>
+    <a href="create-blog.html" class="nav-link">Write a Post</a>
+    <a href="dashboard.html" class="nav-link active">Author Dashboard</a>
+    <div id="mobile-auth-actions"></div>
+  </div>
+
+  <main class="main-content">
+    <div class="dashboard-wrapper">
+      <div class="container">
+
+        <!-- Personalized Dashboard Header -->
+        <div class="dashboard-header">
+          <div class="dashboard-welcome">
+            <h1>Welcome back, <span id="dash-user-name">Author</span>! 👋</h1>
+            <p id="dash-user-role">Author & Creator</p>
+          </div>
+
+          <a href="create-blog.html" class="btn btn-primary btn-lg">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            Create New Blog
+          </a>
+        </div>
+
+        <!-- 4 Metric Cards Grid -->
+        <div class="stats-grid">
+          <!-- Total Blogs Card -->
+          <div class="stat-card">
+            <div class="stat-icon total">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+            </div>
+            <div class="stat-details">
+              <h4>Total Blogs</h4>
+              <div class="stat-number" id="stat-total-blogs">0</div>
+            </div>
+          </div>
+
+          <!-- Published Blogs Card -->
+          <div class="stat-card">
+            <div class="stat-icon published">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+            </div>
+            <div class="stat-details">
+              <h4>Published</h4>
+              <div class="stat-number" id="stat-published-blogs">0</div>
+            </div>
+          </div>
+
+          <!-- Draft Blogs Card -->
+          <div class="stat-card">
+            <div class="stat-icon draft">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+            </div>
+            <div class="stat-details">
+              <h4>Drafts</h4>
+              <div class="stat-number" id="stat-draft-blogs">0</div>
+            </div>
+          </div>
+
+          <!-- Total Reads Card -->
+          <div class="stat-card">
+            <div class="stat-icon reads">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            </div>
+            <div class="stat-details">
+              <h4>Total Reads</h4>
+              <div class="stat-number" id="stat-total-reads">0</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dashboard Content Box -->
+        <div>
+          <!-- Controls Header: Filter Tabs & Search -->
+          <div class="dashboard-controls">
+            <div class="dashboard-filter-tabs">
+              <button class="dash-tab-btn active" data-filter="all">All Posts</button>
+              <button class="dash-tab-btn" data-filter="published">Published</button>
+              <button class="dash-tab-btn" data-filter="draft">Drafts</button>
+            </div>
+
+            <div class="dashboard-search-wrap">
+              <div class="search-input-group">
+                <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input
+                  type="text"
+                  id="dashboard-search-input"
+                  class="form-control"
+                  placeholder="Search your posts..."
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Posts Table Card -->
+          <div class="dashboard-table-card" id="dash-table-wrapper">
+            <table class="dash-table">
+              <thead>
+                <tr>
+                  <th style="width: 42%;">Article Title</th>
+                  <th>Category</th>
+                  <th>Status</th>
+                  <th>Date</th>
+                  <th>Views</th>
+                  <th style="text-align: right; padding-right: 2rem;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="dashboard-posts-body">
+                <!-- Dynamically populated rows -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Empty State (When no posts match) -->
+          <div class="empty-state" id="dash-empty-state" style="display: none;">
+            <div class="empty-state-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+            </div>
+            <h3>No articles found</h3>
+            <p>You haven't written any posts in this category yet. Start creating your next story today!</p>
+            <a href="create-blog.html" class="btn btn-primary">Create Your First Blog</a>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+  <!-- Delete Confirmation Modal -->
+  <div class="modal-overlay" id="delete-confirm-modal" role="dialog" aria-modal="true">
+    <div class="confirm-modal-card">
+      <div class="confirm-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+      </div>
+      <h3>Delete Blog Post?</h3>
+      <p>Are you sure you want to permanently delete this blog post? This action cannot be undone.</p>
+      <div class="confirm-actions">
+        <button type="button" class="btn btn-secondary" id="cancel-delete-btn">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirm-delete-btn">Delete Permanently</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/auth.js"></script>
+  <script src="js/blog.js"></script>
+  <script src="js/main.js"></script>
+  <script src="js/dashboard.js"></script>
+</body>
+</html>
