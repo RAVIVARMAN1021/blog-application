@@ -1,23 +1,29 @@
 /**
  * ============================================================================
  * BLOGVERSE - DASHBOARD MODULE (dashboard.js)
- * Manages user dashboard, statistics calculation, post listing, search,
- * filtering, edit redirection, status toggling, and delete confirmation modal.
+ * Connects Author Dashboard to Node.js / Express.js REST API backend.
+ * Displays dynamic statistics, manages author's blogs, supports status toggling,
+ * editing, searching, and deleting with modal confirmation.
  * ============================================================================
  */
+
+// Backend API Base URL
+var API_BASE_URL = window.API_BASE_URL || 'http://localhost:5000/api';
 
 let activeFilter = 'all';
 let currentSearchTerm = '';
 let postToDeleteId = null;
+let cachedUserPosts = [];
 
 /**
  * Initialize Dashboard Page
  */
-function initDashboard() {
+async function initDashboard() {
   const user = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
+  const token = typeof getAuthToken === 'function' ? getAuthToken() : null;
 
   // Protect route
-  if (!user) {
+  if (!user || !token) {
     if (typeof showToast === 'function') {
       showToast('Please sign in to access your author dashboard.', 'info');
     }
@@ -27,15 +33,15 @@ function initDashboard() {
     return;
   }
 
-  // Populate personalized greetings
+  // Populate personalized greeting
   populateUserGreeting(user);
 
   // Setup UI event listeners
   setupDashboardControls();
   setupDeleteModal();
 
-  // Initial render of stats & posts
-  refreshDashboard();
+  // Initial fetch of user blogs & render
+  await refreshDashboard();
 }
 
 /**
@@ -50,17 +56,43 @@ function populateUserGreeting(user) {
 }
 
 /**
- * Get all posts owned by the current user
- * Note: demo user owns sample posts with demo@example.com or any user-created posts
- * @returns {Array}
+ * Fetch all posts owned by the current logged-in user from backend REST API
+ * @returns {Promise<Array>}
  */
-function getUserPosts() {
-  const user = getCurrentUser();
-  if (!user) return [];
-  const allBlogs = typeof getBlogs === 'function' ? getBlogs() : [];
-  
-  // Return blogs matching author's email or created by them
-  return allBlogs.filter(b => b.authorEmail === user.email || (!b.authorEmail && b.author === user.name));
+async function fetchUserBlogs() {
+  const token = typeof getAuthToken === 'function' ? getAuthToken() : localStorage.getItem('blogverse_token');
+  if (!token) return [];
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/blogs/user/my-blogs`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+
+    if (response.status === 401) {
+      if (typeof showToast === 'function') {
+        showToast('Your session has expired. Please sign in again.', 'info');
+      }
+      if (typeof logoutUser === 'function') {
+        logoutUser();
+      }
+      return [];
+    }
+
+    const data = await response.json();
+    if (data.success && Array.isArray(data.blogs)) {
+      return data.blogs.map(formatBlogItem);
+    }
+    return [];
+  } catch (err) {
+    console.error('Error fetching user blogs from API:', err);
+    if (typeof showToast === 'function') {
+      showToast('Could not reach backend API server.', 'error');
+    }
+    return [];
+  }
 }
 
 /**
@@ -105,8 +137,8 @@ function renderDashboardTable(posts) {
   // Filter by search term
   if (currentSearchTerm.trim()) {
     const term = currentSearchTerm.toLowerCase();
-    filtered = filtered.filter(p => 
-      p.title.toLowerCase().includes(term) || 
+    filtered = filtered.filter(p =>
+      p.title.toLowerCase().includes(term) ||
       p.category.toLowerCase().includes(term)
     );
   }
@@ -163,7 +195,7 @@ function renderDashboardTable(posts) {
             </button>
 
             <!-- Toggle Publish/Draft -->
-            <button class="action-icon-btn toggle-status-btn" data-id="${post.id}" title="${toggleIconTitle}" aria-label="Toggle Status">
+            <button class="action-icon-btn toggle-status-btn" data-id="${post.id}" data-status="${post.status}" title="${toggleIconTitle}" aria-label="Toggle Status">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
             </button>
 
@@ -182,7 +214,6 @@ function renderDashboardTable(posts) {
     `;
   }).join('');
 
-  // Attach button action listeners
   attachTableEventListeners();
 }
 
@@ -195,9 +226,9 @@ function attachTableEventListeners() {
 
   // View post modal
   tbody.querySelectorAll('.view-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const id = btn.getAttribute('data-id');
-      const post = typeof getBlogById === 'function' ? getBlogById(id) : null;
+      const post = cachedUserPosts.find(p => p.id === id) || (await getBlogById(id));
       if (post && typeof openReaderModal === 'function') {
         openReaderModal(post);
       }
@@ -214,21 +245,27 @@ function attachTableEventListeners() {
 
   // Toggle post status button
   tbody.querySelectorAll('.toggle-status-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const id = btn.getAttribute('data-id');
-      if (typeof toggleBlogStatus === 'function') {
-        const updated = toggleBlogStatus(id);
-        if (updated) {
-          if (typeof showToast === 'function') {
-            showToast(`Post status changed to ${updated.status}.`, 'info');
-          }
-          refreshDashboard();
+      const currentStatus = btn.getAttribute('data-status');
+      btn.disabled = true;
+
+      const result = await toggleBlogStatus(id, currentStatus);
+      if (result && result.success) {
+        if (typeof showToast === 'function') {
+          showToast(`Post status updated to ${result.blog.status}.`, 'success');
         }
+        await refreshDashboard();
+      } else {
+        if (typeof showToast === 'function') {
+          showToast(result?.message || 'Failed to update status', 'error');
+        }
+        btn.disabled = false;
       }
     });
   });
 
-  // Delete post button (opens confirmation modal)
+  // Delete post button
   tbody.querySelectorAll('.delete-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const id = btn.getAttribute('data-id');
@@ -241,23 +278,21 @@ function attachTableEventListeners() {
  * Setup dashboard filter tabs and search input
  */
 function setupDashboardControls() {
-  // Tabs
   const tabButtons = document.querySelectorAll('.dash-tab-btn');
   tabButtons.forEach(btn => {
     btn.addEventListener('click', () => {
       tabButtons.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       activeFilter = btn.getAttribute('data-filter') || 'all';
-      renderDashboardTable(getUserPosts());
+      renderDashboardTable(cachedUserPosts);
     });
   });
 
-  // Search input
   const searchInput = document.getElementById('dashboard-search-input');
   if (searchInput) {
     searchInput.addEventListener('input', (e) => {
       currentSearchTerm = e.target.value;
-      renderDashboardTable(getUserPosts());
+      renderDashboardTable(cachedUserPosts);
     });
   }
 }
@@ -279,37 +314,37 @@ function setupDeleteModal() {
 
   if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
 
-  // Close on backdrop click
   modal.addEventListener('click', (e) => {
     if (e.target === modal) closeModal();
   });
 
-  // Confirm delete action
   if (confirmBtn) {
-    confirmBtn.addEventListener('click', () => {
+    confirmBtn.addEventListener('click', async () => {
       if (!postToDeleteId) return;
 
-      const success = typeof deleteBlog === 'function' ? deleteBlog(postToDeleteId) : false;
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Deleting...';
+
+      const success = await deleteBlog(postToDeleteId);
+
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = 'Delete Permanently';
       closeModal();
 
       if (success) {
         if (typeof showToast === 'function') {
-          showToast('Blog post was deleted successfully.', 'success');
+          showToast('Blog post deleted successfully.', 'success');
         }
-        refreshDashboard();
+        await refreshDashboard();
       } else {
         if (typeof showToast === 'function') {
-          showToast('Failed to delete blog post.', 'error');
+          showToast('Failed to delete blog post from server.', 'error');
         }
       }
     });
   }
 }
 
-/**
- * Open delete confirmation modal for specific post
- * @param {string} id 
- */
 function openDeleteConfirmModal(id) {
   const modal = document.getElementById('delete-confirm-modal');
   if (!modal) return;
@@ -318,22 +353,17 @@ function openDeleteConfirmModal(id) {
 }
 
 /**
- * Refresh stats and table contents
+ * Refresh stats and table contents from backend API
  */
-function refreshDashboard() {
-  const posts = getUserPosts();
-  renderDashboardStats(posts);
-  renderDashboardTable(posts);
+async function refreshDashboard() {
+  cachedUserPosts = await fetchUserBlogs();
+  renderDashboardStats(cachedUserPosts);
+  renderDashboardTable(cachedUserPosts);
 }
 
-/**
- * Escape HTML to prevent XSS
- * @param {string} str 
- * @returns {string}
- */
 function escapeHtml(str) {
   if (!str) return '';
-  return str
+  return String(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -341,7 +371,6 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
-// Initialize on DOMContentLoaded
 document.addEventListener('DOMContentLoaded', () => {
   initDashboard();
 });

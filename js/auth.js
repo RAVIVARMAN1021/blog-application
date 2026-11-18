@@ -2,64 +2,41 @@
  * ============================================================================
  * BLOGVERSE - AUTHENTICATION MODULE (auth.js)
  * Handles user registration, login, logout, password visibility, and route guards.
- * Uses localStorage for persistent client-side session management.
+ * Integrates directly with the Node.js / Express.js REST API backend.
+ * Stores JWT token and user profile in client storage.
  * ============================================================================
  */
 
+// Backend API Base URL
+var API_BASE_URL = window.API_BASE_URL || 'http://localhost:5000/api';
+
 // Storage Keys
-const USERS_STORAGE_KEY = 'blogverse_users';
+const TOKEN_STORAGE_KEY = 'blogverse_token';
 const CURRENT_USER_KEY = 'blogverse_current_user';
 
-// Default Demo User for easy testing and evaluation
+// Default Demo User credentials for convenient evaluation
 const DEFAULT_DEMO_USER = {
-  id: 'usr_demo_01',
   name: 'Alex Rivera',
   email: 'demo@example.com',
-  password: 'password123',
-  avatar: 'AR',
-  role: 'Author & Senior Engineer',
-  joinedDate: '2024-01-15'
+  password: 'password123'
 };
 
 /**
- * Initialize default users in localStorage if not already present
+ * Retrieve the current JWT authentication token
+ * @returns {string|null}
  */
-function initUsersStorage() {
-  const users = getUsersFromStorage();
-  if (users.length === 0) {
-    saveUsersToStorage([DEFAULT_DEMO_USER]);
-  }
-}
-
-/**
- * Retrieve all registered users from localStorage
- * @returns {Array} Array of user objects
- */
-function getUsersFromStorage() {
+function getAuthToken() {
   try {
-    const data = localStorage.getItem(USERS_STORAGE_KEY);
-    return data ? JSON.parse(data) : [];
+    return localStorage.getItem(TOKEN_STORAGE_KEY);
   } catch (err) {
-    console.error('Error reading users from localStorage:', err);
-    return [];
+    console.error('Error reading auth token:', err);
+    return null;
   }
 }
 
 /**
- * Save users list to localStorage
- * @param {Array} users 
- */
-function saveUsersToStorage(users) {
-  try {
-    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
-  } catch (err) {
-    console.error('Error saving users to localStorage:', err);
-  }
-}
-
-/**
- * Get current authenticated user
- * @returns {Object|null} User object or null if not logged in
+ * Get current authenticated user object
+ * @returns {Object|null}
  */
 function getCurrentUser() {
   try {
@@ -72,106 +49,137 @@ function getCurrentUser() {
 }
 
 /**
- * Set current authenticated user
+ * Save user session (token and profile)
  * @param {Object} user 
+ * @param {string} token 
  */
-function setCurrentUser(user) {
+function setAuthSession(user, token) {
   try {
-    // Save without password
-    const safeUser = { ...user };
-    delete safeUser.password;
-    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(safeUser));
+    if (token) localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    if (user) {
+      const safeUser = { ...user };
+      delete safeUser.password;
+      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(safeUser));
+    }
   } catch (err) {
-    console.error('Error saving current user:', err);
+    console.error('Error saving auth session:', err);
   }
 }
 
 /**
- * Log out current user and redirect to home
+ * Log out current user, clear session, and redirect to home
  */
 function logoutUser() {
+  localStorage.removeItem(TOKEN_STORAGE_KEY);
   localStorage.removeItem(CURRENT_USER_KEY);
+
   if (typeof showToast === 'function') {
     showToast('You have been logged out successfully.', 'info');
   }
+
   setTimeout(() => {
     window.location.href = 'index.html';
   }, 500);
 }
 
 /**
- * Authenticate user with email and password
+ * Authenticate user with email and password via backend REST API
  * @param {string} email 
  * @param {string} password 
- * @returns {Object} { success: boolean, message: string, user?: Object }
+ * @returns {Promise<Object>} { success: boolean, message: string, user?: Object, token?: string }
  */
-function loginUser(email, password) {
-  initUsersStorage();
-  const users = getUsersFromStorage();
-  const normalizedEmail = email.trim().toLowerCase();
+async function loginUser(email, password) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        email: email.trim().toLowerCase(),
+        password
+      })
+    });
 
-  const user = users.find(u => u.email.toLowerCase() === normalizedEmail);
+    const data = await response.json();
 
-  if (!user) {
-    return { success: false, message: 'No account found with this email address.' };
+    if (response.ok && data.success && data.token) {
+      setAuthSession(data.user, data.token);
+      return {
+        success: true,
+        message: data.message || `Welcome back, ${data.user.name}!`,
+        user: data.user,
+        token: data.token
+      };
+    } else {
+      return {
+        success: false,
+        message: data.message || 'Login failed. Please verify your credentials.'
+      };
+    }
+  } catch (error) {
+    console.error('Backend Login API Error:', error);
+    return {
+      success: false,
+      message: 'Unable to reach backend server. Please verify the backend server is running on port 5000.'
+    };
   }
-
-  if (user.password !== password) {
-    return { success: false, message: 'Incorrect password. Please try again.' };
-  }
-
-  setCurrentUser(user);
-  return { success: true, message: `Welcome back, ${user.name}!`, user };
 }
 
 /**
- * Register a new user
+ * Register a new user via backend REST API
  * @param {string} name 
  * @param {string} email 
  * @param {string} password 
- * @returns {Object} { success: boolean, message: string, user?: Object }
+ * @returns {Promise<Object>} { success: boolean, message: string, user?: Object, token?: string }
  */
-function registerUser(name, email, password) {
-  initUsersStorage();
-  const users = getUsersFromStorage();
-  const normalizedEmail = email.trim().toLowerCase();
+async function registerUser(name, email, password) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/auth/register`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        password
+      })
+    });
 
-  if (users.some(u => u.email.toLowerCase() === normalizedEmail)) {
-    return { success: false, message: 'An account with this email already exists.' };
+    const data = await response.json();
+
+    if (response.ok && data.success && data.token) {
+      setAuthSession(data.user, data.token);
+      return {
+        success: true,
+        message: data.message || 'Account created successfully! Welcome to Blogverse.',
+        user: data.user,
+        token: data.token
+      };
+    } else {
+      return {
+        success: false,
+        message: data.message || 'Registration failed. Please try again.'
+      };
+    }
+  } catch (error) {
+    console.error('Backend Registration API Error:', error);
+    return {
+      success: false,
+      message: 'Unable to reach backend server. Please verify the backend server is running on port 5000.'
+    };
   }
-
-  // Generate initials for avatar
-  const initials = name
-    .trim()
-    .split(' ')
-    .filter(n => n.length > 0)
-    .map(n => n[0].toUpperCase())
-    .slice(0, 2)
-    .join('') || 'U';
-
-  const newUser = {
-    id: 'usr_' + Date.now(),
-    name: name.trim(),
-    email: normalizedEmail,
-    password: password,
-    avatar: initials,
-    role: 'Member & Writer',
-    joinedDate: new Date().toISOString().split('T')[0]
-  };
-
-  users.push(newUser);
-  saveUsersToStorage(users);
-  setCurrentUser(newUser);
-
-  return { success: true, message: 'Account created successfully! Welcome to Blogverse.', user: newUser };
 }
 
 /**
- * Require authentication guard: redirects to login if user is guest
+ * Route Guard: Redirects to login if user is not authenticated
  */
 function requireAuth(redirectBack = true) {
+  const token = getAuthToken();
   const user = getCurrentUser();
-  if (!user) {
+
+  if (!token || !user) {
     if (redirectBack) {
       const currentUrl = encodeURIComponent(window.location.pathname.split('/').pop() || 'index.html');
       window.location.href = `login.html?redirect=${currentUrl}`;
@@ -184,11 +192,13 @@ function requireAuth(redirectBack = true) {
 }
 
 /**
- * Redirect away if already logged in (used on login and register pages)
+ * Route Guard: Redirect away from login/register if already authenticated
  */
 function redirectIfAuth() {
+  const token = getAuthToken();
   const user = getCurrentUser();
-  if (user) {
+
+  if (token && user) {
     const params = new URLSearchParams(window.location.search);
     const redirect = params.get('redirect') || 'dashboard.html';
     window.location.href = redirect;
@@ -196,7 +206,7 @@ function redirectIfAuth() {
 }
 
 /**
- * Helper to setup password show/hide toggles on inputs
+ * Setup password show/hide eye toggle button
  */
 function setupPasswordToggles() {
   const toggleButtons = document.querySelectorAll('.password-toggle-btn');
@@ -209,7 +219,6 @@ function setupPasswordToggles() {
       const isPassword = input.type === 'password';
       input.type = isPassword ? 'text' : 'password';
 
-      // Switch icon
       btn.innerHTML = isPassword
         ? `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`
         : `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
@@ -219,7 +228,7 @@ function setupPasswordToggles() {
 }
 
 /**
- * Setup Demo Account Quick Fill Button
+ * Quick Auto-Fill Demo Button Helper
  */
 function setupDemoLoginHelper() {
   const fillBtn = document.getElementById('fill-demo-btn');
@@ -237,20 +246,20 @@ function setupDemoLoginHelper() {
       emailInput.classList.add('is-valid');
       passwordInput.classList.add('is-valid');
       if (typeof showToast === 'function') {
-        showToast('Demo credentials filled! Click Log In to continue.', 'info');
+        showToast('Demo credentials filled! Click Sign In to authenticate with backend.', 'info');
       }
     }
   });
 }
 
 /**
- * Handle Login Form Validation & Submission
+ * Handle Login Form Validation & Async Submission to REST API
  */
 function setupLoginForm() {
   const form = document.getElementById('login-form');
   if (!form) return;
 
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     const emailInput = document.getElementById('login-email');
@@ -260,7 +269,7 @@ function setupLoginForm() {
 
     let isValid = true;
 
-    // Reset errors
+    // Reset error styling
     emailError.textContent = '';
     passwordError.textContent = '';
     emailInput.classList.remove('is-invalid', 'is-valid');
@@ -297,40 +306,38 @@ function setupLoginForm() {
 
     if (!isValid) return;
 
-    // Perform Login
+    // Set Loading State
     const submitBtn = form.querySelector('button[type="submit"]');
     const originalBtnText = submitBtn.innerHTML;
     submitBtn.disabled = true;
     submitBtn.innerHTML = 'Signing in...';
 
-    const result = loginUser(emailVal, passwordVal);
+    const result = await loginUser(emailVal, passwordVal);
 
-    setTimeout(() => {
-      submitBtn.disabled = false;
-      submitBtn.innerHTML = originalBtnText;
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = originalBtnText;
 
-      if (result.success) {
-        if (typeof showToast === 'function') {
-          showToast(result.message, 'success');
-        }
-        const params = new URLSearchParams(window.location.search);
-        const redirect = params.get('redirect') || 'dashboard.html';
-        setTimeout(() => {
-          window.location.href = redirect;
-        }, 600);
-      } else {
-        if (typeof showToast === 'function') {
-          showToast(result.message, 'error');
-        }
-        passwordError.textContent = result.message;
-        passwordInput.classList.add('is-invalid');
+    if (result.success) {
+      if (typeof showToast === 'function') {
+        showToast(result.message, 'success');
       }
-    }, 400);
+      const params = new URLSearchParams(window.location.search);
+      const redirect = params.get('redirect') || 'dashboard.html';
+      setTimeout(() => {
+        window.location.href = redirect;
+      }, 500);
+    } else {
+      if (typeof showToast === 'function') {
+        showToast(result.message, 'error');
+      }
+      passwordError.textContent = result.message;
+      passwordInput.classList.add('is-invalid');
+    }
   });
 }
 
 /**
- * Handle Registration Form Validation & Submission
+ * Handle Registration Form Validation & Async Submission to REST API
  */
 function setupRegisterForm() {
   const form = document.getElementById('register-form');
@@ -350,7 +357,7 @@ function setupRegisterForm() {
 
   const strengthBar = document.getElementById('password-strength-bar');
 
-  // Live password strength indicator
+  // Password strength meter
   if (passwordInput && strengthBar) {
     passwordInput.addEventListener('input', () => {
       const val = passwordInput.value;
@@ -367,7 +374,7 @@ function setupRegisterForm() {
     });
   }
 
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     let isValid = true;
@@ -437,7 +444,7 @@ function setupRegisterForm() {
       confirmPasswordInput.classList.add('is-valid');
     }
 
-    // Terms agreement check
+    // Terms check
     if (termsCheckbox && !termsCheckbox.checked) {
       termsError.textContent = 'You must agree to the Terms of Service to register.';
       isValid = false;
@@ -445,39 +452,36 @@ function setupRegisterForm() {
 
     if (!isValid) return;
 
-    // Submit
+    // Submit state
     const submitBtn = form.querySelector('button[type="submit"]');
     const originalBtnText = submitBtn.innerHTML;
     submitBtn.disabled = true;
     submitBtn.innerHTML = 'Creating account...';
 
-    const result = registerUser(nameVal, emailVal, passwordVal);
+    const result = await registerUser(nameVal, emailVal, passwordVal);
 
-    setTimeout(() => {
-      submitBtn.disabled = false;
-      submitBtn.innerHTML = originalBtnText;
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = originalBtnText;
 
-      if (result.success) {
-        if (typeof showToast === 'function') {
-          showToast(result.message, 'success');
-        }
-        setTimeout(() => {
-          window.location.href = 'dashboard.html';
-        }, 700);
-      } else {
-        if (typeof showToast === 'function') {
-          showToast(result.message, 'error');
-        }
-        emailError.textContent = result.message;
-        emailInput.classList.add('is-invalid');
+    if (result.success) {
+      if (typeof showToast === 'function') {
+        showToast(result.message, 'success');
       }
-    }, 450);
+      setTimeout(() => {
+        window.location.href = 'dashboard.html';
+      }, 600);
+    } else {
+      if (typeof showToast === 'function') {
+        showToast(result.message, 'error');
+      }
+      emailError.textContent = result.message;
+      emailInput.classList.add('is-invalid');
+    }
   });
 }
 
 // Global initialization on DOMContentLoaded
 document.addEventListener('DOMContentLoaded', () => {
-  initUsersStorage();
   setupPasswordToggles();
   setupDemoLoginHelper();
   setupLoginForm();

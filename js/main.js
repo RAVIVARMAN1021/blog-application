@@ -6,14 +6,15 @@
  * - Mobile Navigation Menu Toggle
  * - Dynamic Navbar Auth State & Dropdowns
  * - Toast Notification System
- * - Home Page: Featured Post, Live Search & Category Filtering
- * - Full Article Reader Modal with Comments & Likes
+ * - Home Page: Fetches published blogs from REST API, live search & categories
+ * - Full Article Reader Modal with Likes & Comments connected to API
  * ============================================================================
  */
 
-// Global State for Home Page Filtering
+// Global State for Home Page Filtering & Data Cache
 let homeActiveCategory = 'All';
 let homeSearchQuery = '';
+let cachedHomeBlogs = [];
 
 /**
  * ============================================================================
@@ -86,7 +87,7 @@ function initMobileNav() {
     }
   });
 
-  // Close on window resize if enlarged
+  // Close on window resize
   window.addEventListener('resize', () => {
     if (window.innerWidth > 768) {
       mobileNav.classList.remove('open');
@@ -116,7 +117,7 @@ function updateNavbarAuthState() {
       
       <div class="nav-user-dropdown" id="nav-user-dropdown">
         <button class="nav-user-btn" id="nav-user-toggle" aria-expanded="false" aria-haspopup="true">
-          <div class="nav-user-avatar">${escapeHtml(user.avatar || 'U')}</div>
+          <div class="nav-user-avatar">${escapeHtml(user.avatar || (user.name ? user.name[0].toUpperCase() : 'U'))}</div>
           <span class="nav-user-name">${escapeHtml(user.name.split(' ')[0])}</span>
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
         </button>
@@ -142,7 +143,7 @@ function updateNavbarAuthState() {
       </div>
     `;
 
-    // Dropdown open/close
+    // Dropdown toggle
     const toggleBtn = document.getElementById('nav-user-toggle');
     const menu = document.getElementById('nav-user-menu');
     if (toggleBtn && menu) {
@@ -251,12 +252,23 @@ function showToast(message, type = 'info', duration = 3500) {
 
 /**
  * ============================================================================
- * 5. HOME PAGE LOGIC: POSTS, SEARCH, AND CATEGORIES
+ * 5. HOME PAGE LOGIC: POSTS, SEARCH, AND CATEGORIES (Connected to REST API)
  * ============================================================================
  */
-function initHomePage() {
+async function initHomePage() {
   const postsGrid = document.getElementById('home-posts-grid');
   if (!postsGrid) return; // Not on home page
+
+  // Show subtle loading state
+  postsGrid.innerHTML = `
+    <div style="grid-column: 1/-1; text-align: center; padding: 3rem 0; color: var(--text-muted);">
+      <svg class="spin" style="margin: 0 auto 1rem; width: 32px; height: 32px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>
+      <p>Loading latest articles from server...</p>
+    </div>
+  `;
+
+  // Fetch blogs from backend API
+  cachedHomeBlogs = await getBlogs();
 
   // Render Category Filter Chips
   renderCategoryFilterPills();
@@ -281,8 +293,7 @@ function renderCategoryFilterPills() {
   const filterContainer = document.getElementById('category-filter-bar');
   if (!filterContainer) return;
 
-  const allBlogs = typeof getBlogs === 'function' ? getBlogs() : [];
-  const published = allBlogs.filter(b => b.status === 'published');
+  const published = cachedHomeBlogs;
 
   // Collect unique categories
   const categories = ['All', ...new Set(published.map(b => b.category))];
@@ -348,10 +359,7 @@ function renderFeaturedPost() {
   const container = document.getElementById('featured-post-container');
   if (!container) return;
 
-  const allBlogs = typeof getBlogs === 'function' ? getBlogs() : [];
-  const published = allBlogs.filter(b => b.status === 'published');
-
-  // Find post marked featured, or the first published post
+  const published = cachedHomeBlogs;
   const featured = published.find(b => b.featured) || published[0];
 
   if (!featured) {
@@ -380,7 +388,7 @@ function renderFeaturedPost() {
           <div class="author-avatar">${escapeHtml(featured.authorAvatar || 'AU')}</div>
           <div class="author-info">
             <h4>${escapeHtml(featured.author)}</h4>
-            <p>${featured.authorEmail || 'Author'}</p>
+            <p>${escapeHtml(featured.authorEmail || 'Author')}</p>
           </div>
         </div>
       </div>
@@ -404,25 +412,21 @@ function renderHomePosts() {
   const emptyState = document.getElementById('home-empty-state');
   if (!postsGrid) return;
 
-  const allBlogs = typeof getBlogs === 'function' ? getBlogs() : [];
-  let published = allBlogs.filter(b => b.status === 'published');
-
-  // Exclude featured card post from repeating at the very top if category is 'All' and no search query
-  const featuredPost = published.find(b => b.featured) || published[0];
+  let published = cachedHomeBlogs;
 
   // Apply Category Filter
   if (homeActiveCategory !== 'All') {
-    published = published.filter(b => b.category.toLowerCase() === homeActiveCategory.toLowerCase());
+    published = published.filter(b => b.category && b.category.toLowerCase() === homeActiveCategory.toLowerCase());
   }
 
   // Apply Search Filter
   if (homeSearchQuery.trim()) {
     const q = homeSearchQuery.toLowerCase();
-    published = published.filter(b => 
-      b.title.toLowerCase().includes(q) ||
-      b.excerpt.toLowerCase().includes(q) ||
-      b.category.toLowerCase().includes(q) ||
-      b.author.toLowerCase().includes(q)
+    published = published.filter(b =>
+      (b.title && b.title.toLowerCase().includes(q)) ||
+      (b.excerpt && b.excerpt.toLowerCase().includes(q)) ||
+      (b.category && b.category.toLowerCase().includes(q)) ||
+      (b.author && b.author.toLowerCase().includes(q))
     );
   }
 
@@ -464,9 +468,9 @@ function renderHomePosts() {
 
   // Attach click listeners to cards
   postsGrid.querySelectorAll('.blog-card').forEach(card => {
-    card.addEventListener('click', () => {
+    card.addEventListener('click', async () => {
       const id = card.getAttribute('data-id');
-      const post = typeof getBlogById === 'function' ? getBlogById(id) : null;
+      const post = cachedHomeBlogs.find(p => p.id === id) || (await getBlogById(id));
       if (post) {
         openReaderModal(post);
       }
@@ -497,12 +501,6 @@ function setupNewsletterForm() {
  * ============================================================================
  */
 function openReaderModal(post) {
-  // Increment view counter
-  if (typeof incrementBlogViews === 'function') {
-    incrementBlogViews(post.id);
-  }
-
-  // Check or create modal overlay element
   let modal = document.getElementById('reader-modal-overlay');
   if (!modal) {
     modal = document.createElement('div');
@@ -571,21 +569,23 @@ function openReaderModal(post) {
   `;
 
   modal.classList.add('open');
-  document.body.style.overflow = 'hidden'; // prevent background scrolling
+  document.body.style.overflow = 'hidden';
 
-  // Setup comments inside modal
+  // Setup comments
   setupModalComments(post.id);
 
-  // Setup like button inside modal
+  // Setup like button via backend API
   const likeBtn = modal.querySelector('#modal-like-btn');
   if (likeBtn) {
-    likeBtn.addEventListener('click', () => {
+    likeBtn.addEventListener('click', async () => {
+      const currentlyLiked = likeBtn.classList.contains('liked');
       if (typeof toggleBlogLike === 'function') {
-        const newLikes = toggleBlogLike(post.id);
+        const newLikes = await toggleBlogLike(post.id, currentlyLiked);
         const countDisplay = modal.querySelector('#like-count-display');
         if (countDisplay) countDisplay.textContent = newLikes;
         likeBtn.classList.toggle('liked');
         const isNowLiked = likeBtn.classList.contains('liked');
+        localStorage.setItem(likedKey, isNowLiked ? 'true' : 'false');
         const svg = likeBtn.querySelector('svg');
         if (svg) svg.setAttribute('fill', isNowLiked ? 'currentColor' : 'none');
       }
@@ -614,7 +614,7 @@ function openReaderModal(post) {
 }
 
 /**
- * Handle comments stored in localStorage for each blog
+ * Comments component (stored in client storage per post)
  * @param {string} postId 
  */
 function setupModalComments(postId) {
@@ -682,9 +682,6 @@ function setupModalComments(postId) {
   }
 }
 
-/**
- * Utility: Escape HTML helper
- */
 function escapeHtml(str) {
   if (!str) return '';
   return String(str)
