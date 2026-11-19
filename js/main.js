@@ -395,11 +395,11 @@ function renderFeaturedPost() {
     </div>
   `;
 
-  // Click card to open full article reader modal
+  // Click card to navigate to full article details page
   const card = container.querySelector('.featured-card');
   if (card) {
     card.addEventListener('click', () => {
-      openReaderModal(featured);
+      window.location.href = `blog-details.html?id=${encodeURIComponent(featured.id)}`;
     });
   }
 }
@@ -466,13 +466,12 @@ function renderHomePosts() {
     </article>
   `).join('');
 
-  // Attach click listeners to cards
+  // Attach click listeners to cards to navigate to blog-details.html
   postsGrid.querySelectorAll('.blog-card').forEach(card => {
-    card.addEventListener('click', async () => {
+    card.addEventListener('click', () => {
       const id = card.getAttribute('data-id');
-      const post = cachedHomeBlogs.find(p => p.id === id) || (await getBlogById(id));
-      if (post) {
-        openReaderModal(post);
+      if (id) {
+        window.location.href = `blog-details.html?id=${encodeURIComponent(id)}`;
       }
     });
   });

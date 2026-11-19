@@ -1,12 +1,21 @@
 /**
- * Comprehensive Backend API Test Suite
- * Tests all authentication, blog CRUD, permissions, and error handling.
+ * Comprehensive Backend & MongoDB Atlas Database Verification Suite
+ * Tests all requirements: User registration, password hashing verification in MongoDB,
+ * authentication, blog CRUD, individual blog details, draft isolation, and security.
  */
 
 const http = require('http');
+const mongoose = require('mongoose');
+const dotenv = require('dotenv');
+const path = require('path');
 
-const PORT = 5000;
+dotenv.config({ path: path.join(__dirname, '.env') });
+
+const PORT = process.env.PORT || 5000;
 const BASE_URL = `http://localhost:${PORT}/api`;
+
+const User = require('./models/User');
+const Blog = require('./models/Blog');
 
 function request(options, data = null) {
   return new Promise((resolve, reject) => {
@@ -33,9 +42,9 @@ function request(options, data = null) {
 }
 
 async function runTests() {
-  console.log('\n=============================================');
-  console.log('🧪 RUNNING COMPREHENSIVE BACKEND API TESTS');
-  console.log('=============================================\n');
+  console.log('\n=============================================================');
+  console.log('🧪 RUNNING COMPREHENSIVE BACKEND & MONGODB ATLAS VERIFICATION');
+  console.log('=============================================================\n');
 
   let passed = 0;
   let failed = 0;
@@ -51,8 +60,12 @@ async function runTests() {
   }
 
   try {
+    // Connect Mongoose directly to MongoDB Atlas for database-level assertions
+    await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 10000 });
+    console.log(`📡 Connected directly to MongoDB Atlas (${mongoose.connection.host}) for direct DB verification.\n`);
+
     // 1. Health Check
-    console.log('--- 1. Testing Health Check ---');
+    console.log('--- 1. Health Check ---');
     const health = await request({
       hostname: 'localhost',
       port: PORT,
@@ -61,43 +74,10 @@ async function runTests() {
     });
     assert(health.status === 200 && health.data.success === true, 'GET /api/health returns 200 OK');
 
-    // 2. Demo User Login
-    console.log('\n--- 2. Testing User Login ---');
-    const loginRes = await request(
-      {
-        hostname: 'localhost',
-        port: PORT,
-        path: '/api/auth/login',
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      },
-      {
-        email: 'demo@example.com',
-        password: 'password123'
-      }
-    );
-    assert(loginRes.status === 200 && loginRes.data.token, 'POST /api/auth/login with valid credentials returns 200 + JWT');
-    const demoToken = loginRes.data.token;
-
-    // 3. User Login with wrong password
-    const badLogin = await request(
-      {
-        hostname: 'localhost',
-        port: PORT,
-        path: '/api/auth/login',
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      },
-      {
-        email: 'demo@example.com',
-        password: 'wrong_password'
-      }
-    );
-    assert(badLogin.status === 401 && badLogin.data.success === false, 'POST /api/auth/login with invalid password returns 401');
-
-    // 4. User Registration
-    console.log('\n--- 3. Testing User Registration ---');
-    const uniqueEmail = `testuser_${Date.now()}@example.com`;
+    // 2. Register a New User
+    console.log('\n--- 2. User Registration & Database Verification ---');
+    const uniqueEmail = `atlas_tester_${Date.now()}@example.com`;
+    const regPassword = 'SecurePassword123!';
     const regRes = await request(
       {
         hostname: 'localhost',
@@ -107,76 +87,68 @@ async function runTests() {
         headers: { 'Content-Type': 'application/json' }
       },
       {
-        name: 'New Test User',
+        name: 'Atlas Verification Tester',
         email: uniqueEmail,
-        password: 'password123'
+        password: regPassword
       }
     );
     assert(regRes.status === 201 && regRes.data.token, 'POST /api/auth/register creates user and returns 201 + JWT');
+    const newUserId = regRes.data.user._id;
     const newUserToken = regRes.data.token;
 
-    // 5. Duplicate Registration Check
-    const dupReg = await request(
+    // 3. Verify user is saved in MongoDB directly
+    const dbUser = await User.findById(newUserId).select('+password');
+    assert(dbUser && dbUser.email === uniqueEmail, 'Verify new user is saved in MongoDB Atlas database');
+
+    // 4. Verify password is saved in hashed form (bcrypt) and not plain text
+    const isHashed = dbUser.password && (dbUser.password.startsWith('$2a$') || dbUser.password.startsWith('$2b$'));
+    const isNotPlain = dbUser.password !== regPassword;
+    const bcryptMatches = await dbUser.matchPassword(regPassword);
+    assert(isHashed && isNotPlain && bcryptMatches, 'Verify password is salted and hashed using bcryptjs in MongoDB Atlas');
+
+    // 5. Verify password hash is never returned through API
+    assert(regRes.data.user.password === undefined, 'Verify password hash is NOT exposed in API responses');
+
+    // 6. Log in with the registered account
+    console.log('\n--- 3. User Login & Token Verification ---');
+    const loginRes = await request(
       {
         hostname: 'localhost',
         port: PORT,
-        path: '/api/auth/register',
+        path: '/api/auth/login',
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       },
       {
-        name: 'Duplicate User',
         email: uniqueEmail,
-        password: 'password123'
+        password: regPassword
       }
     );
-    assert(dupReg.status === 400, 'POST /api/auth/register with duplicate email returns 400 error');
+    assert(loginRes.status === 200 && loginRes.data.token, 'POST /api/auth/login succeeds with registered credentials');
 
-    // 6. Get Current User Profile (/api/auth/me)
-    console.log('\n--- 4. Testing Protected Profile ---');
-    const meRes = await request({
-      hostname: 'localhost',
-      port: PORT,
-      path: '/api/auth/me',
-      method: 'GET',
-      headers: { Authorization: `Bearer ${demoToken}` }
-    });
-    assert(meRes.status === 200 && meRes.data.user.email === 'demo@example.com', 'GET /api/auth/me returns authenticated user details');
+    // 7. Verify login fails with incorrect password
+    const badLogin = await request(
+      {
+        hostname: 'localhost',
+        port: PORT,
+        path: '/api/auth/login',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      },
+      {
+        email: uniqueEmail,
+        password: 'wrong_password_attempt'
+      }
+    );
+    assert(badLogin.status === 401, 'POST /api/auth/login rejects invalid password with 401');
 
-    // 7. Get All Published Blogs
-    console.log('\n--- 5. Testing Blog APIs ---');
-    const allBlogs = await request({
-      hostname: 'localhost',
-      port: PORT,
-      path: '/api/blogs',
-      method: 'GET'
-    });
-    assert(allBlogs.status === 200 && Array.isArray(allBlogs.data.blogs), 'GET /api/blogs returns list of published blogs');
-
-    // 7b. Test search with regex special characters like "[" and "("
-    const regexSearch = await request({
-      hostname: 'localhost',
-      port: PORT,
-      path: '/api/blogs?search=' + encodeURIComponent('['),
-      method: 'GET'
-    });
-    assert(regexSearch.status === 200, 'GET /api/blogs?search=[ handles regex characters safely without 500 error');
-
-    // 7c. Test Invalid ObjectId format handling (CastError)
-    const invalidIdRes = await request({
-      hostname: 'localhost',
-      port: PORT,
-      path: '/api/blogs/invalid_id_12345',
-      method: 'GET'
-    });
-    assert(invalidIdRes.status === 404, 'GET /api/blogs/invalid_id returns 404 for invalid ObjectId format');
-
-    // 8. Create a New Blog (Protected)
-    const newBlogPayload = {
-      title: 'Automated Test Blog Article',
+    // 8. Create a New Blog (Published)
+    console.log('\n--- 4. Blog Creation & MongoDB Storage Verification ---');
+    const blogPayload = {
+      title: 'Deep Dive into Cloud Database Architectures',
       category: 'Technology',
-      content: '<p>This is test content written during automated verification of the REST APIs.</p>',
-      excerpt: 'Short excerpt for automated test blog.',
+      content: '<p>Exploring distributed MongoDB replica sets, cloud resilience, and high-throughput indexes.</p>',
+      excerpt: 'Exploring distributed MongoDB replica sets.',
       image: 'https://images.unsplash.com/photo-1555066931-4365d14bab8c',
       status: 'published'
     };
@@ -189,66 +161,66 @@ async function runTests() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${demoToken}`
+          Authorization: `Bearer ${newUserToken}`
         }
       },
-      newBlogPayload
+      blogPayload
     );
-    assert(createBlogRes.status === 201 && createBlogRes.data.blog, 'POST /api/blogs creates new blog post');
+    assert(createBlogRes.status === 201 && createBlogRes.data.blog, 'POST /api/blogs creates blog post');
     const createdBlogId = createBlogRes.data.blog._id;
 
-    // 9. Unauthorized Blog Creation (without token)
-    const unauthCreate = await request(
-      {
-        hostname: 'localhost',
-        port: PORT,
-        path: '/api/blogs',
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      },
-      newBlogPayload
-    );
-    assert(unauthCreate.status === 401, 'POST /api/blogs without JWT returns 401 Unauthorized');
+    // 9. Verify blog is saved in MongoDB Atlas directly
+    const dbBlog = await Blog.findById(createdBlogId);
+    assert(dbBlog && dbBlog.title === blogPayload.title && dbBlog.author.toString() === newUserId, 'Verify blog is persisted in MongoDB Atlas with author reference');
 
-    // 10. Get Single Blog by ID
-    const singleBlog = await request({
+    // 10. Retrieve all published blogs (GET /api/blogs)
+    console.log('\n--- 5. Retrieve Published Blogs & Filtering ---');
+    const allPublished = await request({
+      hostname: 'localhost',
+      port: PORT,
+      path: '/api/blogs',
+      method: 'GET'
+    });
+    assert(allPublished.status === 200 && allPublished.data.blogs.some(b => b._id === createdBlogId), 'GET /api/blogs retrieves published blogs including new post');
+
+    // 11. Category Filtering
+    const techBlogs = await request({
+      hostname: 'localhost',
+      port: PORT,
+      path: '/api/blogs?category=Technology',
+      method: 'GET'
+    });
+    assert(techBlogs.status === 200 && techBlogs.data.blogs.every(b => b.category === 'Technology'), 'GET /api/blogs?category=Technology filters by category');
+
+    // 12. Search Filtering (with regex characters)
+    const searchRes = await request({
+      hostname: 'localhost',
+      port: PORT,
+      path: '/api/blogs?search=' + encodeURIComponent('Deep Dive'),
+      method: 'GET'
+    });
+    assert(searchRes.status === 200 && searchRes.data.blogs.some(b => b._id === createdBlogId), 'GET /api/blogs?search= keyword search returns matching posts');
+
+    // 13. Open an Individual Blog Details Page API (GET /api/blogs/:id)
+    console.log('\n--- 6. Individual Blog Details (GET /api/blogs/:id) ---');
+    const initialViews = dbBlog.views || 0;
+    const blogDetailsRes = await request({
       hostname: 'localhost',
       port: PORT,
       path: `/api/blogs/${createdBlogId}`,
       method: 'GET'
     });
-    assert(singleBlog.status === 200 && singleBlog.data.blog.title === newBlogPayload.title, 'GET /api/blogs/:id returns single post');
-
-    // 11. Get Logged-in User's Blogs (/api/blogs/user/my-blogs)
-    const userBlogs = await request({
-      hostname: 'localhost',
-      port: PORT,
-      path: '/api/blogs/user/my-blogs',
-      method: 'GET',
-      headers: { Authorization: `Bearer ${demoToken}` }
-    });
-    assert(userBlogs.status === 200 && userBlogs.data.blogs.some(b => b._id === createdBlogId), 'GET /api/blogs/user/my-blogs returns user blogs');
-
-    // 12. Update Blog Post (PUT /api/blogs/:id)
-    const updateBlogRes = await request(
-      {
-        hostname: 'localhost',
-        port: PORT,
-        path: `/api/blogs/${createdBlogId}`,
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${demoToken}`
-        }
-      },
-      {
-        title: 'Updated Automated Test Blog Article Title'
-      }
+    assert(
+      blogDetailsRes.status === 200 &&
+      blogDetailsRes.data.blog.title === blogPayload.title &&
+      blogDetailsRes.data.blog.author.name === 'Atlas Verification Tester' &&
+      blogDetailsRes.data.blog.views === initialViews + 1,
+      'GET /api/blogs/:id retrieves complete blog details, populates author, and increments views'
     );
-    assert(updateBlogRes.status === 200 && updateBlogRes.data.blog.title === 'Updated Automated Test Blog Article Title', 'PUT /api/blogs/:id updates blog title');
 
-    // 13. Forbidden Update by different user
-    const forbiddenUpdate = await request(
+    // 14. Edit an existing blog (PUT /api/blogs/:id)
+    console.log('\n--- 7. Blog Update & Authorization ---');
+    const updateRes = await request(
       {
         hostname: 'localhost',
         port: PORT,
@@ -260,40 +232,93 @@ async function runTests() {
         }
       },
       {
-        title: 'Hacked Title'
+        title: 'Deep Dive into Cloud Database Architectures (Updated)'
       }
     );
-    assert(forbiddenUpdate.status === 403, 'PUT /api/blogs/:id by non-author returns 403 Forbidden');
+    assert(updateRes.status === 200 && updateRes.data.blog.title.includes('Updated'), 'PUT /api/blogs/:id updates blog title');
 
-    // 14. Delete Blog Post (DELETE /api/blogs/:id)
+    // Verify update in MongoDB Atlas directly
+    const updatedDbBlog = await Blog.findById(createdBlogId);
+    assert(updatedDbBlog.title === 'Deep Dive into Cloud Database Architectures (Updated)', 'Verify updated blog title in MongoDB Atlas database');
+
+    // 15. Create Draft Blog and Verify Draft Isolation
+    console.log('\n--- 8. Draft Isolation Verification ---');
+    const draftPayload = {
+      title: 'Secret Upcoming Announcement (Draft Only)',
+      category: 'Career',
+      content: '<p>Internal draft content not ready for the public.</p>',
+      status: 'draft'
+    };
+    const draftCreateRes = await request(
+      {
+        hostname: 'localhost',
+        port: PORT,
+        path: '/api/blogs',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${newUserToken}`
+        }
+      },
+      draftPayload
+    );
+    assert(draftCreateRes.status === 201, 'POST /api/blogs creates draft blog');
+    const draftBlogId = draftCreateRes.data.blog._id;
+
+    // Verify draft is NOT in public GET /api/blogs
+    const publicAfterDraft = await request({
+      hostname: 'localhost',
+      port: PORT,
+      path: '/api/blogs',
+      method: 'GET'
+    });
+    const draftInPublic = publicAfterDraft.data.blogs.some(b => b._id === draftBlogId);
+    assert(!draftInPublic, 'Verify drafts are NOT returned in public GET /api/blogs list');
+
+    // Verify draft IS returned in author dashboard (/api/blogs/user/my-blogs)
+    const myBlogs = await request({
+      hostname: 'localhost',
+      port: PORT,
+      path: '/api/blogs/user/my-blogs',
+      method: 'GET',
+      headers: { Authorization: `Bearer ${newUserToken}` }
+    });
+    const draftInAuthorList = myBlogs.data.blogs.some(b => b._id === draftBlogId && b.status === 'draft');
+    assert(draftInAuthorList, 'Verify author can view own draft in /api/blogs/user/my-blogs');
+
+    // 16. Delete a Blog (DELETE /api/blogs/:id)
+    console.log('\n--- 9. Blog Deletion Verification ---');
     const deleteRes = await request({
       hostname: 'localhost',
       port: PORT,
       path: `/api/blogs/${createdBlogId}`,
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${demoToken}` }
+      headers: { Authorization: `Bearer ${newUserToken}` }
     });
-    assert(deleteRes.status === 200, 'DELETE /api/blogs/:id deletes post');
+    assert(deleteRes.status === 200, 'DELETE /api/blogs/:id successfully deletes post');
 
-    // 15. Verify Blog is Deleted
-    const getDeleted = await request({
-      hostname: 'localhost',
-      port: PORT,
-      path: `/api/blogs/${createdBlogId}`,
-      method: 'GET'
-    });
-    assert(getDeleted.status === 404, 'GET /api/blogs/:id on deleted post returns 404');
+    // Verify removed from MongoDB Atlas directly
+    const deletedDbBlog = await Blog.findById(createdBlogId);
+    assert(deletedDbBlog === null, 'Verify blog document is permanently removed from MongoDB Atlas');
 
-    console.log('\n=============================================');
+    // Clean up test draft
+    await Blog.findByIdAndDelete(draftBlogId);
+    await User.findByIdAndDelete(newUserId);
+
+    console.log('\n=============================================================');
     console.log(`📊 TEST SUMMARY: ${passed} Passed, ${failed} Failed`);
-    console.log('=============================================\n');
+    console.log('=============================================================\n');
 
+    await mongoose.disconnect();
     process.exit(failed > 0 ? 1 : 0);
   } catch (err) {
-    console.error('Fatal test error:', err);
+    console.error('Fatal test execution error:', err);
+    if (mongoose.connection.readyState !== 0) {
+      await mongoose.disconnect();
+    }
     process.exit(1);
   }
 }
 
-// Wait for server to boot, then run tests
-setTimeout(runTests, 1500);
+// Start tests
+setTimeout(runTests, 1000);

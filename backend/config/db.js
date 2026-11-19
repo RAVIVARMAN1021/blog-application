@@ -2,35 +2,42 @@ const mongoose = require('mongoose');
 const seedDatabase = require('./seed');
 
 const connectDB = async () => {
-  const mongoUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/blogverse';
+  const mongoUri = process.env.MONGO_URI;
+
+  if (!mongoUri) {
+    console.error('❌ Database Connection Error: MONGO_URI is not defined in environment variables.');
+    console.error('Please configure MONGO_URI in your .env file.');
+    process.exit(1);
+  }
+
+  // Safely mask credentials for clean console logging
+  const maskedUri = mongoUri.replace(/:([^:@]{3,})@/, ':****@');
 
   try {
-    // Attempt connecting to the configured MongoDB instance (Local or Atlas)
-    console.log(`Connecting to MongoDB at: ${mongoUri.replace(/:([^:@]{3,})@/, ':****@')} ...`);
+    console.log(`Connecting to MongoDB at: ${maskedUri} ...`);
     const conn = await mongoose.connect(mongoUri, {
-      serverSelectionTimeoutMS: 2500
+      serverSelectionTimeoutMS: 10000
     });
 
-    console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
+    const isAtlas = conn.connection.host.includes('mongodb.net');
+    console.log(`======================================================`);
+    console.log(`✅ MongoDB ${isAtlas ? 'Atlas ' : ''}Connected: ${conn.connection.host}`);
+    console.log(`📁 Database Name: ${conn.connection.name}`);
+    console.log(`======================================================`);
+
     await seedDatabase();
   } catch (error) {
-    console.warn(`⚠️ Could not reach MongoDB at ${mongoUri} (${error.message}).`);
-    console.log(`🚀 Starting high-performance embedded in-memory MongoDB server...`);
-
-    try {
-      const { MongoMemoryServer } = require('mongodb-memory-server');
-      const mongod = await MongoMemoryServer.create({
-        instance: { dbName: 'blogverse' }
-      });
-      const inMemoryUri = mongod.getUri();
-      const conn = await mongoose.connect(inMemoryUri);
-
-      console.log(`✅ Embedded In-Memory MongoDB Connected: ${inMemoryUri}`);
-      await seedDatabase();
-    } catch (inMemErr) {
-      console.error(`❌ Fatal Database Connection Error: ${inMemErr.message}`);
-      process.exit(1);
-    }
+    console.error(`======================================================`);
+    console.error(`❌ MongoDB Connection Failed!`);
+    console.error(`Target: ${maskedUri}`);
+    console.error(`Error: ${error.message}`);
+    console.error(`Please check:`);
+    console.error(` 1. Database user credentials in backend/.env`);
+    console.error(` 2. MongoDB Atlas Network Access (IP Whitelist: 0.0.0.0/0)`);
+    console.error(` 3. Internet connectivity`);
+    console.error(`======================================================`);
+    // Ensure the server does not silently continue when the database connection fails
+    process.exit(1);
   }
 };
 

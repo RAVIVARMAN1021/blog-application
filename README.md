@@ -96,6 +96,28 @@ blog-application/
   - One-click Preset Tags (Tech, Code, Design, Desk, AI, Nature).
 - **Publish vs Draft**: Choose to publish immediately or save as a draft.
 
+### 6. Individual Blog Details Page (`blog-details.html`)
+- **Full Story Presentation**: Displays complete blog title, high-resolution hero image, category badge, publication date, and formatted rich article body.
+- **Author Bio Card**: Shows author name, avatar, and credentials.
+- **Live Engagement Bar**: Real-time view count (auto-incremented on view) and interactive Like button synchronized with backend API (`PATCH /api/blogs/:id/like`).
+- **One-Click Link Sharing**: Clipboard copy button for sharing article URLs.
+- **Resilient Error State**: User-friendly empty/404 state if an invalid or deleted ID is requested.
+- **Seamless Back Navigation**: Quick breadcrumb button to return directly to the Home page articles grid.
+
+---
+
+## 🍃 MongoDB Atlas Cloud Integration
+
+The application connects to a cloud-hosted MongoDB Atlas database via the backend REST API:
+
+1. **Configure Connection**: Add your Atlas connection string to `backend/.env`:
+   ```env
+   MONGO_URI=mongodb+srv://<username>:<password>@<cluster-domain>/blogverse?retryWrites=true&w=majority
+   ```
+2. **Network Access**: Ensure your MongoDB Atlas cluster has IP whitelist configured (`0.0.0.0/0` under Network Access).
+3. **Data Security**: All user passwords are encrypted using `bcryptjs` (salt work factor 10) before storage; passwords and hashes are never exposed through API responses.
+4. **Author Association**: Every blog references its creator's User `ObjectId` in MongoDB, enforcing strict update and deletion authorization.
+
 ---
 
 ## 🔑 Pre-Configured Demo Credentials

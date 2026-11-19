@@ -1,4 +1,5 @@
 const Blog = require('../models/Blog');
+const User = require('../models/User');
 
 /**
  * @desc    Get all published blogs (with optional search and category filters)

@@ -52,10 +52,47 @@ CLIENT_URL=http://localhost:8080
 ```
 
 - **`PORT`**: Port number for Express server (default: `5000`).
-- **`MONGO_URI`**: Connection string for local MongoDB or MongoDB Atlas cluster.
-  *(Note: If no external MongoDB instance is running, the server automatically starts a zero-config in-memory MongoDB instance so you can test immediately!)*
+- **`MONGO_URI`**: Connection string for your MongoDB Atlas cluster or local instance.
 - **`JWT_SECRET`**: Private key used to sign and verify JSON Web Tokens.
 - **`JWT_EXPIRE`**: Token validity period (e.g., `7d` or `24h`).
+- **`CLIENT_URL`**: Allowed origin for frontend client CORS requests (`http://localhost:8080`).
+
+---
+
+## 🍃 MongoDB Atlas Setup Instructions
+
+To connect your application to a free, cloud-hosted MongoDB Atlas database:
+
+1. **Create an Atlas Account & Cluster**:
+   - Visit [mongodb.com/cloud/atlas](https://www.mongodb.com/cloud/atlas) and sign in.
+   - Click **"Create a Deployment"** and select the free **M0 (Shared)** tier.
+   - Choose your preferred cloud provider and region (e.g., AWS / Mumbai or N. Virginia).
+
+2. **Configure Database Access (User Credentials)**:
+   - Navigate to **Security > Database Access** in the Atlas sidebar.
+   - Click **"Add New Database User"**.
+   - Choose **Password** authentication, specify a username (e.g., `db_user`) and a secure password.
+   - Assign the **"Read and write to any database"** built-in role.
+
+3. **Configure Network Access (IP Whitelist)**:
+   - Navigate to **Security > Network Access**.
+   - Click **"Add IP Address"**.
+   - Select **"Allow Access from Anywhere"** (`0.0.0.0/0`) for development, or add your current public IP address.
+   - Confirm and save.
+
+4. **Obtain Connection String**:
+   - Go to **Database > Clusters** and click **"Connect"**.
+   - Select **"Drivers"** (Node.js).
+   - Copy the SRV connection URI:
+     ```text
+     mongodb+srv://<username>:<password>@<cluster-domain>/blogverse?retryWrites=true&w=majority
+     ```
+
+5. **Configure `backend/.env`**:
+   - Paste the connection string into `backend/.env` under `MONGO_URI`, replacing `<username>` and `<password>` with your database user credentials.
+   - The backend validates the connection on boot and logs:
+     `✅ MongoDB Atlas Connected: <host>`
+     `📁 Database Name: blogverse`
 
 ---
 
@@ -236,7 +273,7 @@ node test-backend.js
 Expected output:
 ```text
 =============================================
-📊 TEST SUMMARY: 17 Passed, 0 Failed
+📊 TEST SUMMARY: 20 Passed, 0 Failed
 =============================================
 ```
 
